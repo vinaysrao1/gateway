@@ -22,3 +22,6 @@ go vet ./...
 The Pi suite uses Docker as a Linux test machine and a deterministic HTTPS fixture. It checks actual kernel isolation, hostile tools/extensions, credentials, quotas, cancellation and failure cleanup. [Running the gateway](docs/operations.md) explains enforced execution and deployment prerequisites. `gateway serve` alone is a broker and does not isolate agents.
 
 Local measured results: 7.06 MiB Linux arm64 binary, 26.48 MiB combined idle Go RSS, and 0.21–0.42 ms added p95 local mediation latency. Pi/VM memory and upstream DNS/TLS/remote latency are excluded; [evidence and limits](docs/implementation-status.md) give the exact scope.
+
+
+For a simple live demo on your Mac, run `./integration/pi/demo.sh`. Real Pi fetches public `https://example.com/` through the gateway, then attempts a direct curl connection to the same service. The model is a local deterministic fixture, so no model API key is required. Results and gateway audit records are saved under `artifacts/demo/`. The gateway needs Internet access for this demo; Pi remains inside the enforced Linux sandbox.
