@@ -1,0 +1,56 @@
+{
+  "denied_cidrs": [],
+  "fetch_resources": [
+    {
+      "id": "approved",
+      "url": "https://docs.gateway.test/approved"
+    }
+  ],
+  "limits": {
+    "run_seconds": 1800,
+    "concurrent_operations": 4,
+    "total_operations": 500,
+    "request_bytes": 2097152,
+    "header_bytes": 16384,
+    "header_count": 64,
+    "model_response_bytes": 33554432,
+    "fetch_response_bytes": 2097152,
+    "total_request_bytes": 67108864,
+    "total_response_bytes": 134217728,
+    "read_header_seconds": 5,
+    "read_body_seconds": 10,
+    "dns_seconds": 3,
+    "connect_seconds": 5,
+    "tls_seconds": 5,
+    "response_header_seconds": 30,
+    "model_seconds": 180,
+    "fetch_seconds": 30,
+    "stream_idle_seconds": 30,
+    "write_seconds": 5,
+    "copy_buffer_bytes": 32768,
+    "audit_record_bytes": 2048,
+    "audit_file_bytes": 8388608,
+    "sandbox_memory_bytes": 1073741824,
+    "sandbox_processes": 128,
+    "sandbox_cpu_cores": 2,
+    "sandbox_fds": 256,
+    "workspace_bytes": 1073741824,
+    "temp_bytes": 268435456,
+    "local_connections": 8,
+    "request_buffer_bytes": 16777216
+  },
+  "model_routes": [
+    {
+      "id": "model",
+      "local_path": "/v1/chat/completions",
+      "upstream_url": "https://model.gateway.test/v1/chat/completions",
+      "protocol": "openai-chat-v1",
+      "allowed_models": [
+        "gateway-test"
+      ],
+      "credential_ref": "model-key",
+      "max_output_tokens": 512
+    }
+  ],
+  "schema_version": 1
+}

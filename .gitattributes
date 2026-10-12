@@ -1,0 +1,2 @@
+# Preserve byte-exact IANA CSV snapshots, which use CRLF.
+*.csv -text whitespace=cr-at-eol
