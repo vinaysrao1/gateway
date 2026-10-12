@@ -30,8 +30,13 @@ func Run(ctx context.Context, socket, listen string) error {
 		r.Out.Header.Del("X-Forwarded-For")
 		r.Out.Header.Del("X-Forwarded-Host")
 		r.Out.Header.Del("X-Forwarded-Proto")
-	}, Transport: tr, FlushInterval: -1, ErrorLog: log.New(io.Discard, "", 0), ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
+	}, Transport: tr, FlushInterval: -1, ErrorLog: log.New(io.Discard, "", 0), ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 		w.Header().Set("Content-Type", "application/json")
+		if errors.Is(err, errBodyTooLarge) {
+			w.WriteHeader(413)
+			io.WriteString(w, `{"error":{"code":"request_too_large","message":"request_too_large"}}`)
+			return
+		}
 		w.WriteHeader(503)
 		io.WriteString(w, `{"error":{"code":"run_unavailable","message":"run_unavailable"}}`)
 	}}
@@ -95,7 +100,7 @@ func (b *boundedBody) Read(p []byte) (int, error) {
 		var one [1]byte
 		n, e := b.ReadCloser.Read(one[:])
 		if n > 0 {
-			return 0, errors.New("request_too_large")
+			return 0, errBodyTooLarge
 		}
 		if e != nil {
 			_ = http.NewResponseController(b.w).SetReadDeadline(time.Time{})
@@ -112,3 +117,5 @@ func (b *boundedBody) Read(p []byte) (int, error) {
 	}
 	return n, e
 }
+
+var errBodyTooLarge = errors.New("request body too large")

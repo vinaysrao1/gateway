@@ -1,6 +1,6 @@
 # Gateway implementation evidence
 
-The Go implementation is being delivered in reviewed milestones. This file distinguishes passing library tests from real Linux/Pi evidence. A gateway library without process isolation cannot enforce all harness networking.
+The first Go implementation passed library/race checks and real Linux/Pi acceptance on the recorded profile. This file distinguishes observable evidence from broader guarantees. The broker alone cannot enforce all networking; managed runs require the Linux launcher.
 
 ## Core milestone
 
@@ -34,6 +34,30 @@ Additional review tightened duplicate content encoding checks, streaming downstr
 
 An initial read-deadline hypothesis was withdrawn after inspection of Go's HTTP server showed it clears the background read deadline. Explicit clearing remains for clarity; it is not counted as a confirmed root-cause bug.
 
-## Remaining release evidence
+## Linux and real Pi acceptance
 
-The Linux/Pi milestone must provide namespace/route checks, hostile shell/extension probes, outside packet observation, model streaming and approved fetch, cancellation, gateway outage, cross-run isolation, secret scanning, and complete cleanup. Benchmark targets and maximal resource-limit tests must also be measured rather than inferred. Until this evidence is recorded below, the repository is a tested implementation in progress rather than a completed secure release.
+
+Final acceptance was independently rerun by the parent agent using Go 1.27.2 and Linux arm64 (LinuxKit 6.12.54). The suite passes actual Pi 1.1.0 model streaming and approved fetch; malicious extension, native curl, shell and grandchild direct-access probes; IPv4/IPv6/DNS/UDP denial; pathname/abstract host deputies; ambient and socket-standard-stream descriptor denial; raw sockets, AF_VSOCK, io_uring, namespace and mount probes; preparation failures; workspace/tmpfs, process and memory quotas; idle lifetime; detached descendants; bridge/supervisor crashes and stale socket revocation.
+
+An outside packet observer counted 11 HTTPS connections matching 11 broker requests, with zero direct/DNS/UDP bypass packets. Normal and truncated request audit records are correlated with fixture observations. Pi reports incomplete streams as errors, including success markers followed by invalid Content-Length or incomplete chunk framing with LF/CR event delimiters. Upstream cancellation measured 77 ms in the final parent run.
+
+[The source and artifact manifest](evidence/linux-arm64-manifest.json) records the exact Go version, release binary SHA-256, kernel, profile source, tests and pinned Pi dependency lock. The runner regenerates a local manifest under artifacts/acceptance on every run. Audit files retain an adjacent host-only byte-exact .policy.json snapshot.
+
+| Measurement | Final local result | Scope |
+| --- | --- | --- |
+| Linux arm64 release binary | 7,405,728 bytes, 7.06 MiB | Go 1.27.2, stripped, no third-party Go modules |
+| Combined idle Go RSS | 27,120 KiB, 26.48 MiB | 30 seconds idle; supervisor/broker plus bootstrap/bridge; Pi/VM excluded |
+| Added p95 local latency at concurrency 1 | 0.211 ms | 1,200 samples; direct 0.071 ms, mediated 0.282 ms |
+| Added p95 local latency at concurrency 4 | 0.412 ms | 1,200 samples; direct 0.223 ms, mediated 0.635 ms |
+| Added p95 first model stream byte | 0.286 ms | 1,200 samples at concurrency 1; direct 0.054 ms, mediated 0.340 ms |
+| Cancellation seen upstream | 77 ms | Actual pinned Pi RPC, real HTTPS fixture |
+
+Latency measurements use real TCP/Unix local mediation and an in-memory upstream, excluding upstream DNS/TLS/remote latency. Full HTTPS/Pi tests establish transport compatibility but do not constitute a live-provider Internet latency benchmark. Run-to-run measurements vary; these are results on this workstation, not universal hardware promises. Default encoded-buffer admission permits one model call at a time, with other slots available for fetches.
+
+## Final review fixes and supported limits
+
+Real adversarial testing found an ambient inherited FD99 could escape the network namespace boundary. The launcher now seals all inherited descriptors close-on-exec, reopens only trusted bootstrap/filter descriptors, and rejects socket standard streams. Seccomp denies nonreviewed socket families, x32 ABI and io_uring entry points so alternate socket mechanisms cannot evade the reviewed filter.
+
+Pinned SDK inspection established that [DONE] can end processing before later HTTP framing failures are noticed. The gateway now withholds the completing terminal chunk and a bounded suffix until clean HTTP completion, preserving success bytes. Its bounded observer handles LF, CRLF and CR and the supported single response choice. Regression tests and real Pi framing-failure cases cover this root cause. Independent reviewers reported no remaining blocking issues after these fixes; test success is not a formal proof of kernel confinement.
+
+Supported scope remains Linux arm64/amd64 with trusted privileged preparation, fixed HTTPS capabilities, and one compatible model protocol. The initial evidence here covers arm64; GitHub CI exercises amd64. Approved services may receive readable data, and the host/kernel/upstreams remain trusted. SIGKILL can leave inert metadata requiring trusted reclamation; successful workspace export copies ordinary files and changes without propagating deletions. These limits are documented in [operations](operations.md).

@@ -2,3 +2,5 @@
 /artifacts/
 /integration/pi/node_modules/
 *.log
+
+.DS_Store

@@ -1,0 +1,6 @@
+.git
+bin
+artifacts
+.DS_Store
+**/.DS_Store
+**/node_modules

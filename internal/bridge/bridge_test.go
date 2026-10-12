@@ -96,3 +96,55 @@ func TestNoExternalBridgeListener(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+func TestChunkedOversizeIs413(t *testing.T) {
+	dir, e := os.MkdirTemp("/tmp", "gateway-big-")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer os.RemoveAll(dir)
+	socket := filepath.Join(dir, "g.sock")
+	ul, e := net.Listen("unix", socket)
+	if e != nil {
+		t.Fatal(e)
+	}
+	us := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.Copy(io.Discard, r.Body); w.WriteHeader(400) })}
+	go us.Serve(ul)
+	defer us.Close()
+	reserve, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := reserve.Addr().String()
+	reserve.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, socket, addr) }()
+	until := time.Now().Add(time.Second)
+	for {
+		c, e := net.Dial("tcp", addr)
+		if e == nil {
+			c.Close()
+			break
+		}
+		if time.Now().After(until) {
+			t.Fatal("bridge not ready")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Unknown length forces chunked transfer rather than Content-Length rejection.
+	r, e := http.NewRequest("POST", "http://"+addr+"/v1/chat/completions", io.NopCloser(strings.NewReader(strings.Repeat("x", (2<<20)+1))))
+	if e != nil {
+		t.Fatal(e)
+	}
+	r.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 3 * time.Second}
+	res, e := client.Do(r)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 413 {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatal(res.StatusCode, string(b))
+	}
+	cancel()
+	<-done
+}

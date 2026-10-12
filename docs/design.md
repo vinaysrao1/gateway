@@ -140,7 +140,7 @@ A small explicit extension exposes fetch(resource_id) if needed. Shell children 
 | Small Go broker plus Linux isolation | Few services, inspectable authority, secrets outside agent, deterministic policy | Less network compatibility, Linux setup, per-run process overhead, own broker maintenance | Recommended first release |
 | Dedicated VM per run | Stronger separation from host kernel and other workloads | Higher startup and memory cost | Use where risk warrants; Mac test environment needs a Linux VM anyway |
 
-“Very lightweight” is a measured requirement, not a current result. The proposed budgets are a binary at most 20 MiB, incremental idle gateway/supervisor/bridge memory at most 64 MiB per run, and at most 10 ms p95 local mediation overhead with a warmed deterministic upstream fixture. These exclude Pi, the VM, remote latency, and necessary DNS/TLS connection cost, which must be reported separately. Security gates cannot be waived to meet these targets.
+The lightweight budgets are measured in the implementation evidence; results depend on the reference environment. The proposed budgets are a binary at most 20 MiB, incremental idle gateway/supervisor/bridge memory at most 64 MiB per run, and at most 10 ms p95 local mediation overhead with a warmed deterministic upstream fixture. These exclude Pi, the VM, remote latency, and necessary DNS/TLS connection cost, which must be reported separately. Security gates cannot be waived to meet these targets.
 
 ## Decisions and limits for review
 

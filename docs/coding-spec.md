@@ -58,7 +58,7 @@ The bridge and broker accept only the following routes:
 
 Model input MUST include model and messages, and stream MUST be boolean if present. Permit only the pinned Pi adapter's explicitly specified fields, including function tool declarations and tool results needed for local agent use. Reject unknown top-level keys, duplicate keys recursively, remote tool descriptors, server-side tools, externally fetched media URLs, and unbounded token requests. Accept ordinary URL text in messages as content; never treat it as a gateway destination. max_tokens or its selected compatible equivalent MUST be normalized to the configured maximum; values above the maximum are rejected, and missing values get that maximum. Do not assume a token limit enforces monetary budget.
 
-The initial supported schema below is a proposed compatibility contract. Validate it against a captured pinned Pi request; any required additions are spec changes before adapter implementation. Text-only model input is the first release default. No OAuth, model listing, embedding, image generation, audio, responses protocol, or provider protocol translation.
+The supported schema below was validated against captured Pi 1.1.0 requests. Any required additions are spec changes before adapter implementation. Text-only model input is the first release default. No OAuth, model listing, embedding, image generation, audio, responses protocol, or provider protocol translation.
 
 | Model request field | Proposed accepted subset |
 | --- | --- |
@@ -188,7 +188,7 @@ Use a deterministic compatible model fixture to drive real Pi through: model req
 
 ## Module boundaries and coding invariants
 
-The future repository should have cmd/gateway, internal/supervisor, internal/isolation, internal/policy, internal/protocol, internal/transport, internal/audit, internal/bridge, integration/pi, and tests/security. This is a proposed organization, not created implementation files.
+The repository uses cmd/gateway, internal/supervisor, internal/isolation, internal/policy, internal/protocol, internal/transport, internal/audit, internal/bridge, integration/pi, and tests/security. internal/localhttp implements shared raw framing bounds.
 
 - Only transport may create external clients, use resolver APIs, or dial Internet sockets. Supervisor/isolation may use narrowly enumerated local IPC and process control. Bridge may dial only its fixed Unix socket.
 - Adapters select trusted capability IDs and schemas; they cannot instantiate arbitrary outbound requests or read secrets directly.
@@ -209,6 +209,12 @@ Pi 1.1.0 requires text-only content arrays; that compatibility amendment is refl
 
 The local parser accepts CRLF lines only and one request per connection. This avoids normalizing mixed-line framing into ambiguous HTTP. The bridge validates prohibited input before reverse-proxy normalization.
 
-Encoded request buffering reserves four times (request_bytes + 1024) for each model handler until completion, within request_buffer_bytes. With defaults this deliberately admits only one simultaneous model request; fetches use the remaining operation slots. This reservation bounds encoded copies, not Go object/heap overhead. The JSON item/depth caps bound allocation amplification, and the run cgroup enforces the final memory ceiling.
+Encoded request buffering reserves four times (request_bytes + 1024) for each model handler until completion, within request_buffer_bytes. With defaults this deliberately admits only one simultaneous model request; fetches use the remaining operation slots. This reservation bounds encoded copies, not Go object/heap overhead. The JSON item/depth caps bound allocation amplification, and kernel cgroup limits bound the untrusted Pi tree. The trusted broker is outside that cgroup; its heap is bounded structurally by JSON/input/concurrency caps and must be measured separately.
 
 Linux may create default tunnel interfaces in a new network namespace. Only loopback may be up/addressed; any other interface must be down and unaddressed with no external routes. Capabilities and seccomp prevent activating them. This preserves the external-access invariant without incorrectly rejecting Linux kernel defaults.
+
+Successful model SSE must include a nonempty finish_reason and a [DONE] terminal event followed by clean transport completion. The gateway observes events without changing response bytes, bounds each SSE event/line to 64 KiB, and reports clean HTTP EOF without model completion as upstream_incomplete. Supported charset parameters are utf-8 and us-ascii only. Terminal audit records distinguish received upstream bytes from forwarded response bytes; cumulative received budget saturates at its hard cap on an overrun and no over-budget byte is forwarded.
+
+The original final SSE event boundary and a bounded suffix are withheld until clean HTTP body completion. This prevents an SDK that stops at [DONE] from ignoring later framing errors. Success bytes are preserved exactly; terminal timing is deliberately gated. The observer supports LF, CRLF and CR delimiters and only the single choice at index 0 used by the configured model.
+
+Seccomp additionally excludes nonreviewed socket families, x32 syscall ABI and io_uring entry points. Ambient descriptors are sealed close-on-exec before spawn; socket standard streams are rejected, and only trusted bootstrap controls/filter descriptors are reopened and then closed before Pi execution.

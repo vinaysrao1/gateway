@@ -243,3 +243,42 @@ func TestUntrustedAuditLabelsCannotExhaustSink(t *testing.T) {
 		t.Fatal("untrusted label logged")
 	}
 }
+func TestCleanHTTPIncompleteSSEIsNotComplete(t *testing.T) {
+	a := &sink{}
+	s := testServer(t, testPolicy(t, nil), upstreamFunc(func(context.Context, transport.Operation) (*http.Response, error) {
+		resp := response("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
+		resp.Header.Set("Content-Type", "text/event-stream")
+		return resp, nil
+	}), a)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+	resp, e := ts.Client().Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"gateway-test","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+	if e == nil {
+		defer resp.Body.Close()
+		_, e = io.ReadAll(resp.Body)
+	}
+	if e == nil {
+		t.Fatal("incomplete stream had successful HTTP termination")
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		a.mu.Lock()
+		found := false
+		for _, event := range a.events {
+			if event.Kind == "terminal" {
+				found = true
+				if event.Outcome != "upstream_incomplete" {
+					t.Fatal(event.Outcome)
+				}
+			}
+		}
+		a.mu.Unlock()
+		if found {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("missing terminal audit")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}

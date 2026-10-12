@@ -298,6 +298,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := s.upstream.Do(ctx, op)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			outcome = "cancelled"
+			panic(http.ErrAbortHandler)
+		}
 		status, code := 502, "upstream_failed"
 		if errors.Is(err, transport.ErrDestinationDenied) {
 			status = 403
@@ -329,32 +333,63 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.Header().Set("X-Request-Id", id)
 	w.WriteHeader(resp.StatusCode)
+
 	buf := make([]byte, int(l.CopyBufferBytes))
+	var completion protocol.Completion
+	var terminalTail []byte
+	send := func(p []byte) bool {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Duration(l.WriteSeconds) * time.Second))
+		n, err := w.Write(p)
+		bytes += int64(n)
+		if err != nil || n != len(p) {
+			outcome = "client_disconnected"
+			return false
+		}
+		if op.Stream() {
+			if http.NewResponseController(w).Flush() != nil {
+				outcome = "client_disconnected"
+				return false
+			}
+		}
+		return true
+	}
 	for {
 		n, readErr := resp.Body.Read(buf)
 		if n > 0 {
 			received += int64(n)
 			charged := s.chargeResponse(int64(n))
-			if int64(n) > maximum-bytes || !charged {
+			if received > maximum || !charged {
 				outcome = "response_too_large"
 				panic(http.ErrAbortHandler)
 			}
-			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Duration(l.WriteSeconds) * time.Second))
-			written, writeErr := w.Write(buf[:n])
-			bytes += int64(written)
-			if writeErr != nil || written != n {
-				outcome = "client_disconnected"
-				return
-			}
 			if op.Stream() {
-				if err := http.NewResponseController(w).Flush(); err != nil {
-					outcome = "client_disconnected"
-					return
+				if completion.Feed(buf[:n]) != nil {
+					outcome = "upstream_incomplete"
+					panic(http.ErrAbortHandler)
 				}
+			}
+			// Never let the SDK observe a complete terminal event until the upstream
+			// HTTP framing is verified. Earlier partial marker bytes are harmless:
+			// the completing event boundary stays here until clean EOF.
+			if op.Stream() && completion.TerminalSeen() {
+				if len(terminalTail)+n > protocol.MaxSSEEventBytes {
+					outcome = "upstream_incomplete"
+					panic(http.ErrAbortHandler)
+				}
+				terminalTail = append(terminalTail, buf[:n]...)
+			} else if !send(buf[:n]) {
+				return
 			}
 		}
 		if readErr != nil {
 			if readErr == io.EOF {
+				if op.Stream() && !completion.Finished() {
+					outcome = "upstream_incomplete"
+					panic(http.ErrAbortHandler)
+				}
+				if len(terminalTail) > 0 && !send(terminalTail) {
+					return
+				}
 				outcome = "complete"
 				return
 			}
@@ -366,6 +401,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(http.ErrAbortHandler)
 		}
 	}
+
 }
 
 func safeMethod(m string) string {

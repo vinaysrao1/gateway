@@ -1,6 +1,6 @@
 # Agent gateway research and implementation plan
 
-Status: proposed plan for review, October 11, 2026.
+Status: implemented first release plan, October 11, 2026. See implementation-status.md for measured evidence and retained limits.
 
 ## Literature synthesis
 
